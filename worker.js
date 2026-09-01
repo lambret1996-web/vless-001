@@ -8,6 +8,13 @@ const CONNECTION_TIMEOUT = 30000; // 30秒连接超时
 const READ_TIMEOUT = 60000; // 60秒读取超时
 const KEEPALIVE_INTERVAL = 25000; // 25秒心跳间隔
 
+// 订阅配置
+const SUBSCRIPTION_CONFIG = {
+  nodeName: 'VLESS-Proxy',
+  wsPath: '/ws',
+  security: 'tls',
+};
+
 /**
  * 错误类型定义
  */
@@ -49,16 +56,346 @@ class ConnectionState {
   }
 }
 
+/**
+ * 生成 VLESS 订阅链接
+ */
+function generateVlessLink(hostname, port = 443) {
+  const vlessUrl = `vless://${UUID}@${hostname}:${port}?path=${SUBSCRIPTION_CONFIG.wsPath}&security=${SUBSCRIPTION_CONFIG.security}&type=ws#${SUBSCRIPTION_CONFIG.nodeName}`;
+  return vlessUrl;
+}
+
+/**
+ * 生成 Base64 编码的订阅内容
+ */
+function generateBase64Subscription(hostname) {
+  const vlessLink = generateVlessLink(hostname);
+  return btoa(vlessLink); // Base64 编码
+}
+
+/**
+ * 生成 Clash 格式的订阅
+ */
+function generateClashSubscription(hostname) {
+  const vlessLink = generateVlessLink(hostname);
+  const clashConfig = `proxies:
+  - name: "${SUBSCRIPTION_CONFIG.nodeName}"
+    type: vless
+    server: ${hostname}
+    port: 443
+    uuid: ${UUID}
+    network: ws
+    ws-opts:
+      path: ${SUBSCRIPTION_CONFIG.wsPath}
+    tls: true
+
+proxy-groups:
+  - name: "Proxy"
+    type: select
+    proxies:
+      - "${SUBSCRIPTION_CONFIG.nodeName}"
+
+rules:
+  - MATCH,Proxy
+`;
+  return clashConfig;
+}
+
 export async function onRequest(context) {
   const { request } = context;
+  const url = new URL(request.url);
+  const hostname = url.hostname;
 
+  // 路由处理
   try {
-    // 验证 WebSocket 升级请求
-    const upgradeHeader = request.headers.get('Upgrade');
-    if (upgradeHeader?.toLowerCase() !== 'websocket') {
-      return new Response('Upgrade header must be websocket', { status: 400 });
+    // 订阅列表页面
+    if (url.pathname === '/' || url.pathname === '') {
+      return handleIndexPage(hostname);
     }
 
+    // 获取原始 VLESS 链接
+    if (url.pathname === '/subscribe' || url.pathname === '/link') {
+      return handleVlessLink(hostname);
+    }
+
+    // 获取 Base64 编码的订阅
+    if (url.pathname === '/sub' || url.pathname === '/subscription') {
+      return handleBase64Subscription(hostname);
+    }
+
+    // 获取 Clash 格式订阅
+    if (url.pathname === '/clash' || url.pathname === '/clash.yaml') {
+      return handleClashSubscription(hostname);
+    }
+
+    // WebSocket 连接处理（原有逻辑）
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (upgradeHeader?.toLowerCase() === 'websocket') {
+      return handleWebSocket(request, context);
+    }
+
+    // 404 处理
+    return new Response('Not Found', { status: 404 });
+  } catch (error) {
+    console.error('[VLESS] Request handling error:', error.message);
+    return new Response('Internal Server Error', { status: 500 });
+  }
+}
+
+/**
+ * 处理首页 - 显示可用的订阅格式
+ */
+function handleIndexPage(hostname) {
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VLESS 代理订阅</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .subscription-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .subscription-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+        }
+        .subscription-item:hover {
+            background: #e9ecef;
+            transform: translateX(4px);
+        }
+        .subscription-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .subscription-title {
+            font-weight: 600;
+            color: #333;
+        }
+        .subscription-desc {
+            font-size: 13px;
+            color: #666;
+        }
+        .subscription-link {
+            font-size: 12px;
+            color: #999;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .copy-btn {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            margin-left: 12px;
+            white-space: nowrap;
+        }
+        .copy-btn:hover {
+            background: #764ba2;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 16px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.6;
+        }
+        .info-box strong {
+            color: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 VLESS 代理订阅</h1>
+        <p class="subtitle">选择一种订阅格式获取节点信息</p>
+
+        <div class="subscription-list">
+            <div class="subscription-item" id="link-item">
+                <div class="subscription-info">
+                    <div class="subscription-title">原始 VLESS 链接</div>
+                    <div class="subscription-desc">直接复制粘贴到客户端</div>
+                    <div class="subscription-link" id="link-url"></div>
+                </div>
+                <button class="copy-btn" onclick="copyToClipboard('link-url')">复制</button>
+            </div>
+
+            <div class="subscription-item" id="base64-item">
+                <div class="subscription-info">
+                    <div class="subscription-title">Base64 编码订阅</div>
+                    <div class="subscription-desc">用于订阅管理器</div>
+                    <div class="subscription-link" id="base64-url"></div>
+                </div>
+                <button class="copy-btn" onclick="copyToClipboard('base64-url')">复制</button>
+            </div>
+
+            <div class="subscription-item" id="clash-item">
+                <div class="subscription-info">
+                    <div class="subscription-title">Clash YAML 配置</div>
+                    <div class="subscription-desc">Clash/Stash 等客户端使用</div>
+                    <div class="subscription-link">${hostname}/clash</div>
+                </div>
+                <button class="copy-btn" onclick="copyToClipboard('clash-url')">复制</button>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>📋 使用说明：</strong><br>
+            • <strong>原始链接：</strong>适合直接在客户端中添加节点<br>
+            • <strong>Base64 订阅：</strong>用于订阅导入功能<br>
+            • <strong>Clash 配置：</strong>适合 Clash/Stash/Shadowrocket 等客户端<br>
+        </div>
+    </div>
+
+    <script>
+        const hostname = '${hostname}';
+        const port = 443;
+        const uuid = '${UUID}';
+        const wsPath = '${SUBSCRIPTION_CONFIG.wsPath}';
+
+        // 生成链接
+        const vlessLink = \`vless://\${uuid}@\${hostname}:\${port}?path=\${wsPath}&security=tls&type=ws#VLESS-Proxy\`;
+        const base64Sub = btoa(vlessLink);
+        const base64Url = \`https://\${hostname}/sub\`;
+        const clashUrl = \`https://\${hostname}/clash\`;
+
+        // 填充链接
+        document.getElementById('link-url').textContent = vlessLink;
+        document.getElementById('base64-url').textContent = base64Url;
+        document.getElementById('clash-url').textContent = clashUrl;
+
+        // 复制到剪贴板
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            if (elementId === 'link-url') {
+                navigator.clipboard.writeText(vlessLink).then(() => {
+                    alert('已复制 VLESS 链接！');
+                }).catch(() => {
+                    alert('复制失败，请手动复制');
+                });
+            } else if (elementId === 'base64-url') {
+                navigator.clipboard.writeText(base64Url).then(() => {
+                    alert('已复制订阅地址！');
+                }).catch(() => {
+                    alert('复制失败，请手动复制');
+                });
+            } else if (elementId === 'clash-url') {
+                navigator.clipboard.writeText(clashUrl).then(() => {
+                    alert('已复制 Clash 配置地址！');
+                }).catch(() => {
+                    alert('复制失败，请手动复制');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
+  `;
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+  });
+}
+
+/**
+ * 处理原始 VLESS 链接请求
+ */
+function handleVlessLink(hostname) {
+  const vlessLink = generateVlessLink(hostname);
+  return new Response(vlessLink, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': 'inline',
+    },
+  });
+}
+
+/**
+ * 处理 Base64 编码的订阅请求
+ */
+function handleBase64Subscription(hostname) {
+  const base64Sub = generateBase64Subscription(hostname);
+  return new Response(base64Sub, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': 'inline',
+    },
+  });
+}
+
+/**
+ * 处理 Clash 格式的订阅请求
+ */
+function handleClashSubscription(hostname) {
+  const clashConfig = generateClashSubscription(hostname);
+  return new Response(clashConfig, {
+    headers: {
+      'Content-Type': 'application/yaml; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="clash.yaml"',
+    },
+  });
+}
+
+/**
+ * 处理 WebSocket 连接
+ */
+async function handleWebSocket(request, context) {
+  try {
     // 验证连接来源（可选的额外安全性）
     const origin = request.headers.get('Origin');
     if (origin) {
@@ -78,7 +415,7 @@ export async function onRequest(context) {
       webSocket: client,
     });
   } catch (error) {
-    console.error('[VLESS] Initialization error:', error.message);
+    console.error('[VLESS] WebSocket initialization error:', error.message);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
