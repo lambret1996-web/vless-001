@@ -104,26 +104,27 @@ export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
   const hostname = url.hostname;
+  const pathname = url.pathname;
 
   // 路由处理
   try {
     // 订阅列表页面
-    if (url.pathname === '/' || url.pathname === '') {
+    if (pathname === '/' || pathname === '') {
       return handleIndexPage(hostname);
     }
 
     // 获取原始 VLESS 链接
-    if (url.pathname === '/subscribe' || url.pathname === '/link') {
+    if (pathname === '/subscribe' || pathname === '/link') {
       return handleVlessLink(hostname);
     }
 
     // 获取 Base64 编码的订阅
-    if (url.pathname === '/sub' || url.pathname === '/subscription') {
+    if (pathname === '/sub' || pathname === '/subscription') {
       return handleBase64Subscription(hostname);
     }
 
     // 获取 Clash 格式订阅
-    if (url.pathname === '/clash' || url.pathname === '/clash.yaml') {
+    if (pathname === '/clash' || pathname === '/clash.yaml') {
       return handleClashSubscription(hostname);
     }
 
@@ -145,8 +146,7 @@ export async function onRequest(context) {
  * 处理首页 - 显示可用的订阅格式
  */
 function handleIndexPage(hostname) {
-  const html = `
-<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -199,8 +199,6 @@ function handleIndexPage(hostname) {
             border-radius: 8px;
             border-left: 4px solid #667eea;
             transition: all 0.3s ease;
-            text-decoration: none;
-            color: inherit;
         }
         .subscription-item:hover {
             background: #e9ecef;
@@ -268,7 +266,7 @@ function handleIndexPage(hostname) {
                     <div class="subscription-desc">直接复制粘贴到客户端</div>
                     <div class="subscription-link" id="link-url"></div>
                 </div>
-                <button class="copy-btn" onclick="copyToClipboard('link-url')">复制</button>
+                <button class="copy-btn" onclick="copyToClipboard('link-text')">复制</button>
             </div>
 
             <div class="subscription-item" id="base64-item">
@@ -277,16 +275,16 @@ function handleIndexPage(hostname) {
                     <div class="subscription-desc">用于订阅管理器</div>
                     <div class="subscription-link" id="base64-url"></div>
                 </div>
-                <button class="copy-btn" onclick="copyToClipboard('base64-url')">复制</button>
+                <button class="copy-btn" onclick="copyToClipboard('base64-text')">复制</button>
             </div>
 
             <div class="subscription-item" id="clash-item">
                 <div class="subscription-info">
                     <div class="subscription-title">Clash YAML 配置</div>
                     <div class="subscription-desc">Clash/Stash 等客户端使用</div>
-                    <div class="subscription-link">${hostname}/clash</div>
+                    <div class="subscription-link" id="clash-url"></div>
                 </div>
-                <button class="copy-btn" onclick="copyToClipboard('clash-url')">复制</button>
+                <button class="copy-btn" onclick="copyToClipboard('clash-text')">复制</button>
             </div>
         </div>
 
@@ -306,7 +304,6 @@ function handleIndexPage(hostname) {
 
         // 生成链接
         const vlessLink = \`vless://\${uuid}@\${hostname}:\${port}?path=\${wsPath}&security=tls&type=ws#VLESS-Proxy\`;
-        const base64Sub = btoa(vlessLink);
         const base64Url = \`https://\${hostname}/sub\`;
         const clashUrl = \`https://\${hostname}/clash\`;
 
@@ -316,34 +313,25 @@ function handleIndexPage(hostname) {
         document.getElementById('clash-url').textContent = clashUrl;
 
         // 复制到剪贴板
-        function copyToClipboard(elementId) {
-            const element = document.getElementById(elementId);
-            const text = element.textContent;
-            
-            if (elementId === 'link-url') {
-                navigator.clipboard.writeText(vlessLink).then(() => {
-                    alert('已复制 VLESS 链接！');
-                }).catch(() => {
-                    alert('复制失败，请手动复制');
-                });
-            } else if (elementId === 'base64-url') {
-                navigator.clipboard.writeText(base64Url).then(() => {
-                    alert('已复制订阅地址！');
-                }).catch(() => {
-                    alert('复制失败，请手动复制');
-                });
-            } else if (elementId === 'clash-url') {
-                navigator.clipboard.writeText(clashUrl).then(() => {
-                    alert('已复制 Clash 配置地址！');
-                }).catch(() => {
-                    alert('复制失败，请手动复制');
-                });
+        function copyToClipboard(type) {
+            let text = '';
+            if (type === 'link-text') {
+                text = vlessLink;
+            } else if (type === 'base64-text') {
+                text = base64Url;
+            } else if (type === 'clash-text') {
+                text = clashUrl;
             }
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('已复制到剪贴板！');
+            }).catch(() => {
+                alert('复制失败，请手动复制');
+            });
         }
     </script>
 </body>
-</html>
-  `;
+</html>`;
 
   return new Response(html, {
     headers: {
@@ -360,7 +348,6 @@ function handleVlessLink(hostname) {
   return new Response(vlessLink, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Content-Disposition': 'inline',
     },
   });
 }
@@ -373,7 +360,6 @@ function handleBase64Subscription(hostname) {
   return new Response(base64Sub, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Content-Disposition': 'inline',
     },
   });
 }
@@ -385,8 +371,7 @@ function handleClashSubscription(hostname) {
   const clashConfig = generateClashSubscription(hostname);
   return new Response(clashConfig, {
     headers: {
-      'Content-Type': 'application/yaml; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="clash.yaml"',
+      'Content-Type': 'text/yaml; charset=utf-8',
     },
   });
 }
