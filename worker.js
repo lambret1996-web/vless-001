@@ -1,8 +1,3 @@
-// ============================================================
-// Cloudflare Worker 多协议代理核心（剥离订阅/管理后台版）
-// 支持：VLESS/Trojan over WebSocket / gRPC / 叉HTTP
-// 出站：直连 / 反代IP / SOCKS5 / HTTP / HTTPS 链式代理
-// ============================================================
 import { connect } from 'cloudflare:sockets';
 
 let 调试日志打印 = false;
@@ -70,6 +65,10 @@ export default {
 			默认反代IP = proxyIPs[Math.floor(Math.random()*proxyIPs.length)];
 			默认反代兜底 = false;
 		}
+		// v2ray 配置生成：访问 域名/UUID
+		if (request.method === 'GET' && url.pathname === '/' + userID) {
+			return 生成v2ray配置(url.host, userID);
+		}
 		if (userID && upgradeHeader === 'websocket') {
 			const 反代上下文 = 反代参数获取(url, userID, 默认反代IP, 默认反代兜底);
 			return await 处理WS请求(request, userID, url, 反代上下文);
@@ -84,6 +83,36 @@ export default {
 		return new Response('Not Found', { status: 404 });
 	}
 };
+
+function 生成v2ray配置(host, uuid) {
+	const config = {
+		"log": { "loglevel": "warning" },
+		"inbounds": [{
+			"port": 10808, "listen": "127.0.0.1", "protocol": "socks",
+			"settings": { "udp": true },
+			"sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+		}],
+		"outbounds": [{
+			"protocol": "vless",
+			"settings": { "vnext": [{ "address": host, "port": 443, "users": [{ "id": uuid, "encryption": "none", "level": 0 }] }] },
+			"streamSettings": {
+				"network": "ws", "security": "tls",
+				"tlsSettings": { "serverName": host, "allowInsecure": false },
+				"wsSettings": { "path": "/", "headers": { "Host": host } }
+			},
+			"tag": "proxy"
+		}, { "protocol": "freedom", "tag": "direct" }],
+		"routing": {
+			"domainStrategy": "IPIfNonMatch",
+			"rules": [
+				{ "type": "field", "ip": ["geoip:private"], "outboundTag": "direct" },
+				{ "type": "field", "domain": ["geosite:cn"], "outboundTag": "direct" },
+				{ "type": "field", "ip": ["geoip:cn"], "outboundTag": "direct" }
+			]
+		}
+	};
+	return new Response(JSON.stringify(config, null, 2), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+}
 
 function 反代参数获取(url, uuid, 默认反代IP='', 默认反代兜底=true) {
 	const 结果 = {反代IP:默认反代IP,反代兜底:默认反代兜底,代理类型:null,代理参数:{},代理全局:false,木马反代地址:null};
