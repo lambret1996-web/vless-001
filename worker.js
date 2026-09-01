@@ -347,7 +347,7 @@ function handleVlessLink(hostname) {
   const vlessLink = generateVlessLink(hostname);
   return new Response(vlessLink, {
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
     },
   });
 }
@@ -359,7 +359,7 @@ function handleBase64Subscription(hostname) {
   const base64Sub = generateBase64Subscription(hostname);
   return new Response(base64Sub, {
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
     },
   });
 }
@@ -371,7 +371,7 @@ function handleClashSubscription(hostname) {
   const clashConfig = generateClashSubscription(hostname);
   return new Response(clashConfig, {
     headers: {
-      'Content-Type': 'text/yaml; charset=utf-8',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
     },
   });
 }
