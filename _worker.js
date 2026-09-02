@@ -3,10 +3,10 @@ let config_JSON, 缓存SOCKS5白名单 = null, 调试日志打印 = false;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
 const Pages静态页面 = 'https://edt-pages.github.io';
 ///////////////////////////////////////////////////////全局常量和工具函数///////////////////////////////////////////////
-const WS早期数据最大字节 = 8 * 1024, WS早期数据最大头长度 = Math.ceil(WS早期数据最大字节 * 4 / 3) + 4;
-const 上行合包目标字节 = 4 * 1024, 上行队列最大字节 = 32 * 1024 * 1024, 上行队列最大条目 = 4096;
-const 下行Grain包字节 = 16 * 1024, 下行Grain尾部阈值 = 256, 下行Grain低水位字节 = Math.max(1024, 下行Grain尾部阈值 * 12), 下行Grain最大等待轮次 = 2;
-let TCP并发拨号数 = 4, 反代并发拨号数 = 2, 预加载竞速拨号 = true;
+const WS早期数据最大字节 = 12 * 1024, WS早期数据最大头长度 = Math.ceil(WS早期数据最大字节 * 4 / 3) + 4;
+const 上行合包目标字节 = 2 * 1024, 上行队列最大字节 = 48 * 1024 * 1024, 上行队列最大条目 = 16384;
+const 下行Grain包字节 = 8 * 1024, 下行Grain尾部阈值 = 128, 下行Grain低水位字节 = Math.max(512, 下行Grain尾部阈值 * 12), 下行Grain最大等待轮次 = 1;
+let TCP并发拨号数 = 5, 反代并发拨号数 = 3, 预加载竞速拨号 = true;
 ///////////////////////////////////////////////////////查杀特征码///////////////////////////////////////////////
 const 特征码字典 = [
 	(Proxy.name + "IP").toUpperCase(),
